@@ -1,34 +1,127 @@
 var _ = require('underscore');
-var uint = require('uint-js');
+var ByteBuffer = require('byte');
+var xor = require('bitwise-xor');
 
-function Packet(command, payload) {
-  this.SOP = new uint.UInt({ bytes: 1, value: 0x02 });
-  this.CMD = new uint.UInt({ bits: 11, value: command });
+var Packet = function() {};
 
-  //this.LEN = new uint.UInt({ bytes: 4, value: payload.length });
+function decimalToHex(d, padding) {
+    var hex = Number(d).toString(16);
+    padding = typeof (padding) === "undefined" || padding === null ? padding = 2 : padding;
 
-  //this.CMD = new uint.UInt({ bits: 16 });
+    while (hex.length < padding) {
+        hex = "0" + hex;
+    }
 
-  // this.SOP.value(0x02); // Start of message header
-  // this.CMD.value(command); // Command identification
-  // var LEN = //
-  // var PYLD = // Message Payload
-  // var FCS = // Frame Check Sequence
+    return hex;
 }
 
-Packet.getBytes = function() {
-  var payloadLength = this.PYLD.length;
-  var frameCheckSequence = 0;
+Packet.createCommand = function(command, payloadBuf, requestAck) {
+  var packet = new Packet();
 
-  var buf = Buffer.alloc(5 + payloadLength);
-  buf.writeUInt8(this.SOP,0);
-  buf.writeUInt16(this.CMD,1);
-  buf.writeUInt8(payloadLength,3);
-  // Append the payload
-  //buf.writeUInt(payloadLength);
-  buf.writeUInt8(frameCheckSequence,3+payloadLength);
+  packetInfo = Packet._generateOutgoingBytes(command,payloadBuf);
 
-  return buf;
+  packet.bytes = packetInfo.bytes;
+  packet.sop = packetInfo.sop;
+  packet.cmd = packetInfo.cmd;
+  packet.len = packetInfo.len;
+  packet.pyld = packetInfo.pyld;
+  packet.fcs = packetInfo.fcs;
+
+  return packet;
+}
+
+Packet.parseCommand = function(buf) {
+  var packet = new Packet();
+
+  packetInfo = Packet._processIncomingBytes(buf);
+
+  packet.bytes = packetInfo.bytes;
+  packet.sop = packetInfo.sop;
+  packet.cmd = packetInfo.cmd;
+  packet.len = packetInfo.len;
+  packet.pyld = packetInfo.pyld;
+  packet.fcs = packetInfo.fcs;
+
+  return packet;
+}
+
+
+Packet._processIncomingBytes = function(buf) {
+  var SOP = buf.readUInt8(0);
+  var CMD = buf.readUInt16BE(1);
+  var LEN = buf.readUInt8(3);
+  var PYLD = buf.slice(4,LEN);
+  var FCS = buf.readUInt8(3,4+LEN);
+
+  return {
+    bytes: buf,
+    sop: SOP,
+    cmd: CMD,
+    len: LEN,
+    pyld: PYLD,
+    fcs: FCS
+  };
+}
+
+Packet._generateOutgoingBytes = function(command, payloadBuf, requestAck) {
+  var emptyPayload = (_.isNull(payloadBuf) || _.isUndefined(payloadBuf));
+  var payloadSize = emptyPayload ? 0 : payloadBuf.length;
+
+  var SOP = Buffer.alloc(1,0);
+  SOP.writeUInt8(0x02);
+
+  var CMD = Buffer.alloc(2,0);
+  if (_.isBoolean(requestAck) && requestAck === true) {
+    command |= (1 << 14); // set ack request bit
+  }
+  CMD.writeUInt16BE(command);
+
+  var PYLD = payloadBuf;
+
+  var bytes = Buffer.alloc(SOP.length + CMD.length + 1 + payloadSize + 1,0);
+  var fcsCalc = Buffer.alloc(CMD.length + 1 + payloadSize,0);
+  var pos = 0;
+  var fcsPos = 0;
+  SOP.copy(bytes,pos,0,SOP.length);
+  pos += SOP.length;
+
+  CMD.copy(bytes,pos,0,CMD.length);
+  CMD.copy(fcsCalc,fcsPos,0,CMD.length);
+  fcsPos = CMD.length;
+  pos += CMD.length;
+
+  if (emptyPayload) {
+    bytes.writeUInt8(0x00,pos);
+    fcsCalc.writeUInt8(0x00,fcsPos);
+    pos += 1;
+    fcsPos += 1;
+  } else {
+    bytes.writeUInt8(payloadSize,pos);
+    fcsCalc.writeUInt8(payloadSize,fcsPos);
+    pos += 1;
+    fcsPos += 1;
+    PYLD.copy(bytes,pos,0,PYLD.length);
+    PYLD.copy(fcsCalc,fcsPos,0,PYLD.length);
+    pos += PYLD.length;
+    fcsPos += PYLD.length;
+  }
+
+  var FCS = xor(fcsCalc, Buffer.alloc(1,0));
+
+  FCS.copy(bytes,pos,0,1);
+
+  return {
+    bytes: bytes,
+    sop: SOP,
+    cmd: CMD,
+    len: payloadSize,
+    pyld: PYLD,
+    fcs: FCS
+  };
+}
+
+Packet.prototype.getBytes = function() {
+  return this.bytes;
 }
 
 Packet.ZIGBEE_PROFILES = [
@@ -546,9 +639,9 @@ Packet.COMMANDS = {
 }
 
 Packet.RESPONSES = {
-  PING: 0x1000,
+  SYSTEM_PING_RESPONSE: 0x1000,
   //MESSAGE_ERR: 0x90XX,
-  RESET: 0x0001,
+  RESET_RESPONSE: 0x0001,
   GET_TIME: 0x1002,
   SET_TIME: 0x1003,
   START_NETWORK: 0x1005,
@@ -613,8 +706,104 @@ Packet.RESPONSES = {
   SYSTEM PING
   PING device to verify if it is active and to check its capability
 */
-Packet.pingDevice = function() {
-  return new Packet(Packet.COMMANDS.PING);
+Packet.systemPing = function() {
+  return Packet.createCommand(Packet.COMMANDS.PING);
+}
+
+/*
+  SYSTEM PING RESPONSE
+*/
+Packet.prototype.systemPingResponse = function() {
+  var u8MacFlags = this.pyld.readUInt8(0);
+  var u8Services = this.pyld.readUInt8(1);
+  var u8FWVersion = this.pyld.readUInt8(2);
+  var u16Profile = this.pyld.readUInt16BE(3);
+  var u16ShortAdd = this.pyld.readUInt16BE(5);
+  var u64IeeeAdd = this.pyld.readUIntBE(7,4);
+
+  return {
+    u8MacFlags: {
+      name: 'Node capability flags',
+      bit0: {
+        name: 'Coordinator capability',
+        value: (u8MacFlags & (1 << 0)) != 0,
+      },
+      bit1: {
+        name: 'FFD',
+        value: (u8MacFlags & (1 << 1)) != 0,
+      },
+      bit2: {
+        name: 'Node is mains powered',
+        value: (u8MacFlags & (1 << 2)) != 0,
+      },
+      bit3: {
+        name: 'Receiver is enabled during idle periods',
+        value: (u8MacFlags & (1 << 3)) != 0,
+      },
+      bit6: {
+        name: 'Capable of high security',
+        value: (u8MacFlags & (1 << 6)) != 0,
+      },
+      bit7: {
+        name: 'Network address should be allocated to node',
+        value: (u8MacFlags & (1 << 7)) != 0,
+      }
+    },
+    u8Services: {
+      name: 'Available services information',
+      bit0: {
+        name: 'Primary Trust Center',
+        value: (u8Services & (1 << 0)) != 0,
+      },
+      bit1: {
+        name: 'Backup Trust Center',
+        value: (u8Services & (1 << 1)) != 0,
+      },
+      bit2: {
+        name: 'Primary Binding Table Cache',
+        value: (u8Services & (1 << 2)) != 0,
+      },
+      bit3: {
+        name: 'Backup Binding Table Cache',
+        value: (u8Services & (1 << 3)) != 0,
+      },
+      bit4: {
+        name: 'Primary Discovery Cache',
+        value: (u8Services & (1 << 4)) != 0,
+      },
+      bit5: {
+        name: 'Backup Discovery Cache',
+        value: (u8Services & (1 << 5)) != 0,
+      },
+      bit6: {
+        name: 'Network Manager',
+        value: (u8Services & (1 << 6)) != 0,
+      },
+      bit7: {
+        name: 'Node is in “Running” state',
+        value: (u8Services & (1 << 7)) != 0,
+      }
+    },
+    u8FWVersion: {
+      name: 'Node firmware version',
+      value: u8FWVersion,
+    },
+    u16Profile: {
+      name: 'ZigBee profile in use on the first active endpoint of this node',
+      value: u16Profile,
+      hexStr: '0x' + decimalToHex(u16Profile,2).toUpperCase(),
+    },
+    u16ShortAdd: {
+      name: 'The node network (short) address',
+      value: u16ShortAdd,
+      hexStr: '0x' + decimalToHex(u16ShortAdd,2).toUpperCase()
+    },
+    u64IeeeAdd: {
+      name: 'The node IEEE address',
+      value: u64IeeeAdd,
+      hexStr: '0x' + decimalToHex(u64IeeeAdd,8).toUpperCase()
+    }
+  }
 }
 
 /*
@@ -632,7 +821,36 @@ Packet.systemResetRequest = function(u8Type) {
   } else if (u8Type > 0x02 || u8Type < 0x00) {
     throw Error('Parameter must be 0x01, 0x02 or 0x03');
   }
-  return new Packet(Packet.COMMANDS.SYSTEM_RESET_REQUEST, [u8Type]);
+
+  return Packet.createCommand(Packet.COMMANDS.SYSTEM_RESET_REQUEST, new Buffer(1).writeUInt8(u8Type));
+}
+
+/*
+  SYSTEM MESSAGE ERROR RESPONSE
+  The command was malformed or invalid (too many or too few bytes)
+*/
+Packet.prototype.systemMessageErrorResponse = function() {
+  var u8Status = this.pyld.readUInt8(0);
+  var message;
+
+  switch (u8Status) {
+    case 0x80:
+      message = {message: 'Malformed command (possibly too few bytes)'};
+      break;
+    case 0x81:
+      message = {message: 'Internal buffer allocation error'};
+      break;
+    case 0x82:
+      message = {message: 'Command was not recognized.'};
+      break;
+  }
+
+  if (u8Status === 0x82) {
+    message.case = this.cmd ^ 0xFF00;
+    message['code [hex]'] = decimalToHex(this.cmd ^ 0xFF00,2).toUpperCase();
+  }
+
+  return message;
 }
 
 /*
@@ -640,7 +858,20 @@ Packet.systemResetRequest = function(u8Type) {
   Gets current system time
 */
 Packet.systemGetTime = function() {
-  return new Packet(Packet.COMMANDS.SYSTEM_GET_TIME);
+  return Packet.createCommand(Packet.COMMANDS.SYSTEM_GET_TIME);
+}
+
+/*
+  SYSTEM GET TIME RESPONSE
+*/
+Packet.prototype.systemGetTimeResponse = function() {
+  var u32Time = this.pyld.readUInt8(0);
+  return {
+    u32Time: {
+      name: 'ZigBee UTC time',
+      value: u32Time
+    }
+  };
 }
 
 /*
@@ -671,7 +902,20 @@ Packet.systemSetTime = function(u32Time, i32TimeZone, u32DstStart, u32DstEnd, u3
     throw Error('Must pass a number');
   }
 
-  return new Packet(Packet.COMMANDS.SYSTEM_SET_TIME, [u32Time, i32TimeZone, u32DstStart, u32DstEnd, u32DstShift]);
+  return Packet.createCommand(Packet.COMMANDS.SYSTEM_SET_TIME, [u32Time, i32TimeZone, u32DstStart, u32DstEnd, u32DstShift]);
+}
+
+/*
+  SYSTEM SET TIME RESPONSE
+*/
+Packet.prototype.systemSetTimeResponse = function() {
+  var u8Status = this.pyld.readUInt8(0);
+  return {
+    u8Status: {
+      name: 'Indicates success (0) or Failure (1)',
+      value: u8Status
+    }
+  };
 }
 
 /*
@@ -690,7 +934,33 @@ Packet.systemStartNetwork = function(u16PanID, u8Channel) {
     throw Error('Must pass a number');
   }
 
-  return new Packet(Packet.COMMANDS.SYSTEM_START_NETWORK, [u16PanID, u8Channel]);
+  return Packet.createCommand(Packet.COMMANDS.SYSTEM_START_NETWORK, [u16PanID, u8Channel]);
+}
+
+/*
+  SYSTEM START NETWORK RESPONSE (COORDINATOR)
+*/
+Packet.prototype.systemStartNetworkResponse = function() {
+  var u8Channel = this.pyld.readUInt8(0);
+  var u16PanID = this.pyld.readUInt8(1);
+  var u64ExtPanID = this.pyld.readUInt(2,8);
+
+  return {
+    u8Channel: {
+      name: 'Channel number that the network was started on',
+      value: u8Channel,
+    },
+    u16PanID: {
+      name: 'PAN ID of the current network',
+      value: u16PanID,
+      hexStr: '0x' + decimalToHex(u16PanID, 2)
+    },
+    u64ExtPanID: {
+      name: 'Extended PAN ID of the current network',
+      value: u64ExtPanID,
+      hexStr: '0x' + decimalToHex(u64ExtPanID, 8)
+    }
+  };
 }
 
 /*
@@ -709,7 +979,21 @@ Packet.systemJoinNetwork = function(u16PanID, u8Channel) {
     throw Error('Must pass a number');
   }
 
-  return new Packet(Packet.COMMANDS.SYSTEM_JOIN_NETWORK, [u16PanID, u8Channel]);
+  return Packet.createCommand(Packet.COMMANDS.SYSTEM_JOIN_NETWORK, [u16PanID, u8Channel]);
+}
+
+/*
+  SYSTEM UPDATE NETWORK RESPONSE
+*/
+Packet.prototype.systemUpdateNetworkResponse = function() {
+  var u8Status = this.pyld.readUInt8(0);
+
+  return {
+    u8Status: {
+      name: '0 if success, 1 if failure',
+      value: u8Status,
+    },
+  };
 }
 
 /*
@@ -748,7 +1032,7 @@ Packet.systemUpdateNetwork = function(u16DstAdd, u32ChMask, u8ScanDur, u8ScanCou
     throw Error('Must pass a number');
   }
 
-  return new Packet(Packet.COMMANDS.SYSTEM_UPDATE_NETWORK, [u16DstAdd, u32ChMask, u8ScanDur, u8ScanCount]);
+  return Packet.createCommand(Packet.COMMANDS.SYSTEM_UPDATE_NETWORK, [u16DstAdd, u32ChMask, u8ScanDur, u8ScanCount]);
 }
 
 /*
@@ -769,7 +1053,7 @@ Packet.registerNode = function(u64IeeeAdd, u8LnkKey) {
     throw Error('Array must be of length 16');
   }
 
-  return new Packet(Packet.COMMANDS.REGISTER_NODE, [u64IeeeAdd, u8LnkKey]);
+  return Packet.createCommand(Packet.COMMANDS.REGISTER_NODE, [u64IeeeAdd, u8LnkKey]);
 }
 
 /*
@@ -791,7 +1075,7 @@ Packet.getAPSKeyOrTable = function(u8StartIdx, u64IeeeAdd) {
     throw Error('Must pass a number for u64IeeeAdd if u8StartIdx is 0xFF');
   }
 
-  return new Packet(Packet.COMMANDS.GET_APS_KEY_TABLE_REQUEST, [u8StartIdx, u64IeeeAdd]);
+  return Packet.createCommand(Packet.COMMANDS.GET_APS_KEY_TABLE_REQUEST, [u8StartIdx, u64IeeeAdd]);
 }
 
 /*
@@ -812,7 +1096,7 @@ Packet.requestNetworkOrPartnerKey = function(u8KeyType, u64IeeeAdd) {
     throw Error('Must pass a number');
   }
 
-  return new Packet(Packet.COMMANDS.REQUEST_NETWORK_OR_PARTNER_KEY, [u8KeyType, u64IeeeAdd]);
+  return Packet.createCommand(Packet.COMMANDS.REQUEST_NETWORK_OR_PARTNER_KEY, [u8KeyType, u64IeeeAdd]);
 }
 
 /*
@@ -838,7 +1122,7 @@ Packet.modifyPermitJoinRequest = function(u8Mode, u16oru32DstAdd, u8Duration) {
     throw Error('Must pass a number');
   }
 
-  return new Packet(Packet.COMMANDS.MODIFY_PERMIT_JOIN_REQUEST, [u8Mode, u16oru32DstAdd, u8Duration]);
+  return Packet.createCommand(Packet.COMMANDS.MODIFY_PERMIT_JOIN_REQUEST, [u8Mode, u16oru32DstAdd, u8Duration]);
 }
 
 /*
@@ -865,7 +1149,7 @@ Packet.shortNetworkAddressRequest = function(u64IEEE, u8ReqType, u8StartIdx) {
     throw Error('Must pass a number');
   }
 
-  return new Packet(Packet.COMMANDS.SHORT_NETWORK_ADDRESS_REQUEST, [u64IEEE, u8ReqType, u8StartIdx]);
+  return Packet.createCommand(Packet.COMMANDS.SHORT_NETWORK_ADDRESS_REQUEST, [u64IEEE, u8ReqType, u8StartIdx]);
 }
 
 /*
@@ -892,7 +1176,7 @@ Packet.ieeAddressRequest = function(u16DstAdd, u8ReqType, u8StartIdx) {
     throw Error('Must pass a number');
   }
 
-  return new Packet(Packet.COMMANDS.IEEE_ADDRESS_REQUEST, [u64IEEE, u8ReqType, u8StartIdx]);
+  return Packet.createCommand(Packet.COMMANDS.IEEE_ADDRESS_REQUEST, [u64IEEE, u8ReqType, u8StartIdx]);
 }
 
 /*
@@ -911,7 +1195,7 @@ Packet.nodeDescriptorRequest = function(u16DstAdd, u16Interest) {
     throw Error('Must pass a number');
   }
 
-  return new Packet(Packet.COMMANDS.NODE_DESCRIPTOR_REQUEST, [u16DstAdd, u16Interest]);
+  return Packet.createCommand(Packet.COMMANDS.NODE_DESCRIPTOR_REQUEST, [u16DstAdd, u16Interest]);
 }
 
 /*
@@ -934,7 +1218,7 @@ Packet.simpleDescriptorRequest = function(u16DstAdd, u16Interest, u8EndPoint) {
     throw Error('Must pass a number');
   }
 
-  return new Packet(Packet.COMMANDS.SIMPLE_DESCRIPTOR_REQUEST, [u16DstAdd, u16Interest, u8EndPoint]);
+  return Packet.createCommand(Packet.COMMANDS.SIMPLE_DESCRIPTOR_REQUEST, [u16DstAdd, u16Interest, u8EndPoint]);
 }
 
 /*
@@ -953,7 +1237,7 @@ Packet.activeEndpointRequest = function(u16DstAdd, u16Interest) {
     throw Error('Must pass a number');
   }
 
-  return new Packet(Packet.COMMANDS.ACTIVE_ENDPOINT_REQUEST, [u16DstAdd, u16Interest]);
+  return Packet.createCommand(Packet.COMMANDS.ACTIVE_ENDPOINT_REQUEST, [u16DstAdd, u16Interest]);
 }
 
 /*
@@ -972,7 +1256,7 @@ Packet.userDescriptorRequest = function(u16SrcAdd, u16DstAdd) {
     throw Error('Must pass a number');
   }
 
-  return new Packet(Packet.COMMANDS.USER_DESCRIPTOR_REQUEST, [u16SrcAdd, u16DstAdd]);
+  return Packet.createCommand(Packet.COMMANDS.USER_DESCRIPTOR_REQUEST, [u16SrcAdd, u16DstAdd]);
 }
 
 /*
@@ -999,7 +1283,7 @@ Packet.userDescriptorSetRequest = function(u16SrcAdd, u16Interest, u8DescLen, u8
     throw Error('Must pass a number');
   }
 
-  return new Packet(Packet.COMMANDS.USER_DESCRIPTOR_SET_REQUEST, [u16SrcAdd, u16Interest, u8DescLen, u8Desc]);
+  return Packet.createCommand(Packet.COMMANDS.USER_DESCRIPTOR_SET_REQUEST, [u16SrcAdd, u16Interest, u8DescLen, u8Desc]);
 }
 
 Packet.calcFrameCheckSequence = function() {
