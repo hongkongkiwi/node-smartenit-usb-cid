@@ -1286,40 +1286,4 @@ Packet.userDescriptorSetRequest = function(u16SrcAdd, u16Interest, u8DescLen, u8
   return Packet.createCommand(Packet.COMMANDS.USER_DESCRIPTOR_SET_REQUEST, [u16SrcAdd, u16Interest, u8DescLen, u8Desc]);
 }
 
-Packet.calcFrameCheckSequence = function() {
-
-}
-
-Packet.setCommand = function(command) {
-  /*
-  Command identification. The 16-bit number
-  encodes information as follows:
-  Bit 15 is the negative acknowledge bit. If set it
-  indicates the command was not executed
-  correctly. Normally, a status byte will be
-  present in the message body.
-  Bit 14 is the ACK request bit. If set in a request,
-  an initial acknowledge response is expected
-  prior to any actual over-the-air or delayed device
-  response.
-  Bit 12 is the Response Bit. If set it indicates a
-  response message (from ZBCID to host.)
-  Bits 11:0 are the Command Number as follows:
-  0x000-0x00F System Commands (Reset, Enter
-  Flash Mode, Set Clock, etc.)
-  0x010-0x01F Device Information and Network
-  Commands
-  0x020-0x02F Binding Commands
-  0x030-0x03F Cluster Commands
-  */
-}
-
-Packet.setPayload = function(buf) {
-  // This is the message payload which varies in length from 0 to n bytes.
-}
-
-Packet.getBuffer = function() {
-
-}
-
 module.exports = Packet;
