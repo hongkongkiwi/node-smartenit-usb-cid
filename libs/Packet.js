@@ -1,11 +1,34 @@
 var _ = require('underscore');
+var uint = require('uint-js');
 
-function Packet() {
-  var SOP = 0x02; // Start of message header
-  var CMD =  // Command
-  var LEN =
-  var PYLD = // Message Payload
-  var FCS = // Frame Check Sequence
+function Packet(command, payload) {
+  this.SOP = new uint.UInt({ bytes: 1, value: 0x02 });
+  this.CMD = new uint.UInt({ bits: 11, value: command });
+
+  //this.LEN = new uint.UInt({ bytes: 4, value: payload.length });
+
+  //this.CMD = new uint.UInt({ bits: 16 });
+
+  // this.SOP.value(0x02); // Start of message header
+  // this.CMD.value(command); // Command identification
+  // var LEN = //
+  // var PYLD = // Message Payload
+  // var FCS = // Frame Check Sequence
+}
+
+Packet.getBytes = function() {
+  var payloadLength = this.PYLD.length;
+  var frameCheckSequence = 0;
+
+  var buf = Buffer.alloc(5 + payloadLength);
+  buf.writeUInt8(this.SOP,0);
+  buf.writeUInt16(this.CMD,1);
+  buf.writeUInt8(payloadLength,3);
+  // Append the payload
+  //buf.writeUInt(payloadLength);
+  buf.writeUInt8(frameCheckSequence,3+payloadLength);
+
+  return buf;
 }
 
 Packet.ZIGBEE_PROFILES = [
@@ -161,14 +184,14 @@ Packet.ZIGBEE_PROFILES = [
       },
       {
         zcl_category: 'HA/Closures',
-        zcl_name: 'Shade Configuration': {
-        cid: 0x0100
+        zcl_name: 'Shade Configuration',
+        cid: 0x0100,
         client: true,
         server: false
       },
       {
         zcl_category: 'HA/Closures',
-        zcl_name: 'Door Lock': {
+        zcl_name: 'Door Lock',
         cid: 0x0101,
         client: true,
         server: false
@@ -349,8 +372,9 @@ Packet.ZIGBEE_PROFILES = [
       }
     ]
   },
-  'Smart Energy (SE) Profile - As a Router (Gateway)': {
-    id: 0x0109,
+  {
+    profile_name: 'Smart Energy (SE) Profile - As a Router (Gateway)',
+    profile_id: 0x0109,
     zcl_clusters: [
       {
         zcl_category: 'Domain',
@@ -410,10 +434,10 @@ Packet.ZIGBEE_PROFILES = [
       }
     ]
   }
-};
+];
 
 Packet.COMMANDS = {
-  // System Commands
+  // System Commands (0x000-0x00F)
   SYSTEM_PING: 0x0000, // Ping
   SYSTEM_RESET_REQUEST: 0x0001, // Reset
   SYSTEM_GET_TIME: 0x0002, // Get Time
@@ -422,12 +446,12 @@ Packet.COMMANDS = {
   SYSTEM_JOIN_NETWORK: 0x0005, // Router
   SYSTEM_UPDATE_NETWORK: 0x0006, // Update Network
 
-  // Node Requests
+  // Device Information and Network Commands (0x010-0x01F)
   REGISTER_NODE: 0x0009,
   GET_APS_KEY_TABLE_REQUEST: 0x000A,
   REQUEST_NETWORK_OR_PARTNER_KEY: 0x000C,
   MODIFY_PERMIT_JOIN_REQUEST: 0x0010,
-  SHORT_NETWORK_ADDRESS_REQUEST: 0x0012
+  SHORT_NETWORK_ADDRESS_REQUEST: 0x0012,
   IEEE_ADDRESS_REQUEST: 0x0013,
   NODE_DESCRIPTOR_REQUEST: 0x0014,
   SIMPLE_DESCRIPTOR_REQUEST: 0x0015,
@@ -439,6 +463,8 @@ Packet.COMMANDS = {
   POWER_DESCRIPTOR_REQUEST: 0x001D,
   ACTIVE_NETWORK_TABLE_REQUEST: 0x001E,
   ROUTING_TABLE_REQUEST: 0x001F,
+
+  //  Binding Commands (0x020-0x02F)
   BIND_REQUEST: 0x0020,
   UNBIND_REQUEST: 0x0021,
   BIND_TABLE_REQUEST: 0x0023,
@@ -447,7 +473,7 @@ Packet.COMMANDS = {
   OTA_LOAD_IMAGE_BLOCK_REQUEST: 0x0028,
   OTA_ACTION_REQUEST: 0x0029,
 
-  // Cluster Commands
+  // Cluster Commands (0x030-0x03F)
   CLUSTER_COMMANDS: 0x0030,
   CLUSTER_GENERAL_READ_ATTRIBUTES: 0x0030,
   CLUSTER_GENERAL_WRITE_ATTRIBUTES: 0x0030,
@@ -519,7 +545,7 @@ Packet.COMMANDS = {
   MESSAGE_CLUSTER_MESSAGE_CONFIRMATIONL: 0X0030,
 }
 
-Packet.RESPONSES_=_{
+Packet.RESPONSES = {
   PING: 0x1000,
   //MESSAGE_ERR: 0x90XX,
   RESET: 0x0001,
@@ -548,7 +574,7 @@ Packet.RESPONSES_=_{
   BIND_RESOPNSE: 0x1020,
   UNBIND_RESPONSE: 0x1021,
   BIND_TABLE: 0x1023,
-  OTA_LOAD_IMAGE_BLOCKL_0x1028,
+  OTA_LOAD_IMAGE_BLOCKL: 0x1028,
   OTA_ACTION_REQUEST: 0x1029,
   //ZDP_COMMAND_NEGATIVE: 0x90XX,
   DEFAULT_RESPONSE: 0x1031,
@@ -976,6 +1002,9 @@ Packet.userDescriptorSetRequest = function(u16SrcAdd, u16Interest, u8DescLen, u8
   return new Packet(Packet.COMMANDS.USER_DESCRIPTOR_SET_REQUEST, [u16SrcAdd, u16Interest, u8DescLen, u8Desc]);
 }
 
+Packet.calcFrameCheckSequence = function() {
+
+}
 
 Packet.setCommand = function(command) {
   /*

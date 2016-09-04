@@ -10,6 +10,7 @@
   "license": "MIT",
   "dependencies": {
     "serialport": "^4.0.1",
+    "uint-js": "0.0.4",
     "underscore": "^1.8.3"
   }
 }
