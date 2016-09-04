@@ -1,12 +1,12 @@
 {
-  "name": "smartenit-usb",
+  "name": "smartenit-usb-cid",
   "version": "1.0.0",
-  "description": "",
+  "description": "Node.js module for SmartenIT USB Zigbee CID Module.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
+  "author": "Andy Savage <andy@savage.hk>",
   "license": "MIT",
   "dependencies": {
     "serialport": "^4.0.1",
