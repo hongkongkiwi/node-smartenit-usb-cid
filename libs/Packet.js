@@ -815,6 +815,167 @@ Packet.modifyPermitJoinRequest = function(u8Mode, u16oru32DstAdd, u8Duration) {
   return new Packet(Packet.COMMANDS.MODIFY_PERMIT_JOIN_REQUEST, [u8Mode, u16oru32DstAdd, u8Duration]);
 }
 
+/*
+  SHORT NETWORK ADDRESS REQUEST
+  Request a device’s short network address and its
+  Children’s (ShortAddress) list
+
+  Parameter - Description
+  u64IEEE - IEEE address of the destination device
+  u8ReqType - 0x00: Single device response; 0x01: Include associated devices
+  u8StartIdx - Starting index into the children list. This is used to get
+               more of the list if the list is too large for one message
+*/
+Packet.shortNetworkAddressRequest = function(u64IEEE, u8ReqType, u8StartIdx) {
+  if (!_.isNumber(u64IEEE)) {
+    throw Error('Must pass a number');
+  }
+  if (!_.isNumber(u8ReqType)) {
+    throw Error('Must pass a number');
+  } else if (u8ReqType !== 0x00 || u8ReqType !== 0x01) {
+    throw Error('Number must be 0x00 or 0x01');
+  }
+  if (!_.isNumber(u8StartIdx)) {
+    throw Error('Must pass a number');
+  }
+
+  return new Packet(Packet.COMMANDS.SHORT_NETWORK_ADDRESS_REQUEST, [u64IEEE, u8ReqType, u8StartIdx]);
+}
+
+/*
+  IEEE ADDRESS REQUEST
+  Request a device’s Network address and its Children’s
+  (ShortAddress) list
+
+  Parameter - Description
+  u16DstAdd - Short address of the destination device
+  u8ReqType - 0x00: Single device response; 0x01: Include associated devices
+  u8StartIdx - Starting index into the children list. This is used to get
+               more of the list if the list is too large for one message
+*/
+Packet.ieeAddressRequest = function(u16DstAdd, u8ReqType, u8StartIdx) {
+  if (!_.isNumber(u16DstAdd)) {
+    throw Error('Must pass a number');
+  }
+  if (!_.isNumber(u8ReqType)) {
+    throw Error('Must pass a number');
+  } else if (u8ReqType !== 0x00 || u8ReqType !== 0x01) {
+    throw Error('Number must be 0x00 or 0x01');
+  }
+  if (!_.isNumber(u8StartIdx)) {
+    throw Error('Must pass a number');
+  }
+
+  return new Packet(Packet.COMMANDS.IEEE_ADDRESS_REQUEST, [u64IEEE, u8ReqType, u8StartIdx]);
+}
+
+/*
+  NODE DESCRIPTOR REQUEST
+  Get theDestination’s Device Node Descriptor.
+
+  Parameter - Description
+  u16DstAdd - Network address of the device generating the inquiry
+  u16Interest - Network address of the destination device being queried
+*/
+Packet.nodeDescriptorRequest = function(u16DstAdd, u16Interest) {
+  if (!_.isNumber(u16DstAdd)) {
+    throw Error('Must pass a number');
+  }
+  if (!_.isNumber(u16Interest)) {
+    throw Error('Must pass a number');
+  }
+
+  return new Packet(Packet.COMMANDS.NODE_DESCRIPTOR_REQUEST, [u16DstAdd, u16Interest]);
+}
+
+/*
+  SIMPLE DESCRIPTOR REQUEST
+  Get the Destination’s Device Simple Descriptor Information
+
+  Parameter - Description
+  u16DstAdd - Network address of the device generating the inquiry
+  u16Interest - Network address of the destination device being queried
+  u8EndPoint - The application endpoint that sources the data
+*/
+Packet.simpleDescriptorRequest = function(u16DstAdd, u16Interest, u8EndPoint) {
+  if (!_.isNumber(u16DstAdd)) {
+    throw Error('Must pass a number');
+  }
+  if (!_.isNumber(u16Interest)) {
+    throw Error('Must pass a number');
+  }
+  if (!_.isNumber(u8EndPoint)) {
+    throw Error('Must pass a number');
+  }
+
+  return new Packet(Packet.COMMANDS.SIMPLE_DESCRIPTOR_REQUEST, [u16DstAdd, u16Interest, u8EndPoint]);
+}
+
+/*
+  ACTIVE ENDPOINT REQUEST
+  Get the Destination’s Device Active Endpoint Information
+
+  Parameter - Description
+  u16DstAdd - Network address of the device generating the request
+  u16Interest - Network address of the destination device being queried
+*/
+Packet.activeEndpointRequest = function(u16DstAdd, u16Interest) {
+  if (!_.isNumber(u16DstAdd)) {
+    throw Error('Must pass a number');
+  }
+  if (!_.isNumber(u16Interest)) {
+    throw Error('Must pass a number');
+  }
+
+  return new Packet(Packet.COMMANDS.ACTIVE_ENDPOINT_REQUEST, [u16DstAdd, u16Interest]);
+}
+
+/*
+  USER DESCRIPTOR REQUEST
+  Get the Destination’s Device User Descriptor Information
+
+  Parameter - Description
+  u16SrcAdd - Network address of the device generating the inquiry
+  u16DstAdd - Network address of the destination device being queried
+*/
+Packet.userDescriptorRequest = function(u16SrcAdd, u16DstAdd) {
+  if (!_.isNumber(u16SrcAdd)) {
+    throw Error('Must pass a number');
+  }
+  if (!_.isNumber(u16DstAdd)) {
+    throw Error('Must pass a number');
+  }
+
+  return new Packet(Packet.COMMANDS.USER_DESCRIPTOR_REQUEST, [u16SrcAdd, u16DstAdd]);
+}
+
+/*
+  USER DESCRIPTOR SET REQUEST
+  Set Destination Device’s User Descriptor Information
+
+  Parameter - Description
+  u16SrcAdd - The message’s source network address
+  u16Interest - Network address of the described device
+  u8DescLen - Length, in bytes, of the user descriptor
+  u8Desc[] - User descriptor array (can be up to 16 bytes)
+*/
+Packet.userDescriptorSetRequest = function(u16SrcAdd, u16Interest, u8DescLen, u8Desc) {
+  if (!_.isNumber(u16SrcAdd)) {
+    throw Error('Must pass a number');
+  }
+  if (!_.isNumber(u16Interest)) {
+    throw Error('Must pass a number');
+  }
+  if (!_.isNumber(u8DescLen)) {
+    throw Error('Must pass a number');
+  }
+  if (!_.isArray(u8Desc)) {
+    throw Error('Must pass a number');
+  }
+
+  return new Packet(Packet.COMMANDS.USER_DESCRIPTOR_SET_REQUEST, [u16SrcAdd, u16Interest, u8DescLen, u8Desc]);
+}
+
 
 Packet.setCommand = function(command) {
   /*
