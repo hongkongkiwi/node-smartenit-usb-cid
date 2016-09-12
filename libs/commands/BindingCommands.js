@@ -4,6 +4,7 @@
   relationship.
 */
 
+module.exoprts = function(Packet) {
   /*
     BIND REQUEST
     Send Bind Request to a Node Hosting a Binding Table
@@ -126,3 +127,6 @@
                     <u64DstAddress><u8DstEndpoint>
                     b) Else: <u16DstAddress>
   */
+
+  return Packet;
+}
